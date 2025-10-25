@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        /* Your existing CSS - No Changes */
+        /* Your CSS remains unchanged */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0a0a0a; color: #fff; line-height: 1.6; overflow: hidden; height: 100vh; width: 100vw; }
         .player-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000; z-index: 1000; display: flex; flex-direction: column; }
@@ -34,7 +34,7 @@
         .volume-slider-fill { position: absolute; height: 4px; background: #3498db; border-radius: 2px; left: 0; top: 7px; z-index: 1; width: 100%; }
         .quality-selector { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 4px; color: #fff; padding: 5px 10px; cursor: pointer; font-size: 13px; }
         .quality-selector option { background: #2c2c2c; }
-        .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 14px; background: rgba(0, 0, 0, 0.7); padding: 10px 20px; border-radius: 20px; z-index: 1001; display: flex; align-items: center; gap: 8px; }
+        .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; font-size: 14px; background: rgba(0, 0, 0, 0.7); padding: 10px 20px; border-radius: 20px; z-index: 1001; display: none; align-items: center; gap: 8px; }
         .error { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff4444; font-size: 14px; background: rgba(0, 0, 0, 0.8); padding: 15px; border-radius: 8px; text-align: center; z-index: 1001; display: none; max-width: 80%; }
         .center-play-btn { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(0, 0, 0, 0.5); border: none; color: #fff; font-size: 42px; width: 70px; height: 70px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; z-index: 1001; transition: all 0.2s; opacity: 0; }
         .center-play-btn.visible { opacity: 1; }
@@ -137,9 +137,7 @@
             
             let controlsTimeout, hls, qualityLevels = [], currentLevel = -1, lastTap = 0, tapTimeout, mousemoveThrottle;
 
-            // --- NEW CONFIGURATION FOR THIS CHANNEL ---
-            
-            // 1. Define your NEW list of 19 worker URLs
+            // --- CONFIGURATION FOR THIS PLAYER ---
             const WORKER_URLS = [
                 'https://ddos.heavy-ox-nsyj.workers.dev/',
                 'https://ddos.amazing-falcon-rnmo.workers.dev/',
@@ -161,15 +159,13 @@
                 'https://ddos.underlying-condor-inlo.workers.dev/',
                 'https://ddos.exuberant-octopus-ebxw.workers.dev/'
             ];
+            const TARGET_STREAM_URL = 'https://stream-lb.livemedia.ma/arryadia-tnt/hls/master.m3u8';
+            const MAX_RETRIES = 25; // Increased retries since we have more servers
+            // --- END CONFIGURATION ---
 
-            // 2. Define the NEW channel stream URL
-            const TARGET_STREAM_URL = 'https://stream-lb.livemedia.ma/arryadia-tnt/hls/stream_1/playlist.m3u8';
-            
-            // The failover logic remains the same
             let availableWorkers = [...WORKER_URLS];
             let currentWorkerUrl = '';
             let retryCount = 0;
-            const MAX_RETRIES = 25; // Increased retries since we have more servers
 
             function getNextProxyUrl() {
                 if (availableWorkers.length === 0) {
@@ -183,8 +179,11 @@
                 console.log(`Attempting to stream via: ${currentWorkerUrl}`);
                 return `${randomWorker}?url=${encodeURIComponent(TARGET_STREAM_URL)}`;
             }
-
-            // --- END OF NEW CONFIGURATION ---
+            
+            // --- NEW: Helper function to hide the error message ---
+            function hideError() {
+                errorMessage.style.display = 'none';
+            }
             
             initPlayer();
             
@@ -218,7 +217,8 @@
                     
                     hls.on(Hls.Events.MANIFEST_PARSED, function() {
                         console.log('Manifest parsed successfully!');
-                        retryCount = 0;
+                        retryCount = 0; // Reset retry count on success
+                        hideError(); // --- NEW: Hide any previous error on success ---
                         qualityLevels = hls.levels;
                         populateQualityMenu();
                         attemptAutoplay();
@@ -228,6 +228,7 @@
                         updateQualityMenu();
                     });
 
+                    // --- UPDATED HLS Error Handler with SILENT Failover ---
                     hls.on(Hls.Events.ERROR, function(event, data) {
                         console.error('HLS error:', data);
                         if (data.fatal) {
@@ -236,7 +237,10 @@
                                     console.error(`Fatal network error on worker: ${currentWorkerUrl}`);
                                     retryCount++;
                                     if (retryCount <= MAX_RETRIES) {
-                                        showError(`Connection lost. Switching to backup server... (${retryCount}/${MAX_RETRIES})`);
+                                        // --- SILENT CHANGE: Show loading spinner instead of red error ---
+                                        loadingIndicator.style.display = 'flex'; 
+                                        console.log(`Connection lost. Switching to backup server... (${retryCount}/${MAX_RETRIES})`);
+                                        
                                         const nextProxyUrl = getNextProxyUrl();
                                         if (nextProxyUrl) {
                                             hls.loadSource(nextProxyUrl);
@@ -249,7 +253,7 @@
                                     }
                                     break;
                                 case Hls.ErrorTypes.MEDIA_ERROR:
-                                    showError('Media error. Attempting to recover...');
+                                    console.warn('Media error detected. Attempting to recover...');
                                     hls.recoverMediaError();
                                     break;
                                 default:
@@ -258,6 +262,7 @@
                             }
                         }
                     });
+                    // --- END OF UPDATE ---
 
                 } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
                     const randomIndex = Math.floor(Math.random() * WORKER_URLS.length);
@@ -271,7 +276,7 @@
                 }
             }
             
-            // All of your other functions (populateQualityMenu, updateQualityMenu, etc.) remain unchanged.
+            // The rest of your code remains exactly the same.
             function populateQualityMenu(){while(qualityMenu.children.length>1){qualityMenu.removeChild(qualityMenu.lastChild)}const e=qualityMenu.querySelector('.quality-option[data-quality="auto"]');e&&e.addEventListener("click",()=>setQuality("auto"));const t=document.createDocumentFragment();qualityLevels.forEach((e,l)=>{const n=document.createElement("div");n.className="quality-option",n.dataset.quality=l,n.textContent=`${e.height}p (${Math.round(e.bitrate/1e3)}kbps)`,n.addEventListener("click",()=>setQuality(l)),t.appendChild(n)}),qualityMenu.appendChild(t),updateQualityMenu()}function updateQualityMenu(){const e=qualityMenu.querySelectorAll(".quality-option");e.forEach(e=>{const t=e.dataset.quality,l="auto"===t&&-1===currentLevel,n=parseInt(t)===currentLevel;l||n?e.classList.add("active"):e.classList.remove("active")})}function setQuality(e){hls&&(hls.currentLevel="auto"===e?-1:e,currentLevel=hls.currentLevel,updateQualityMenu(),qualityMenu.classList.remove("visible"))}function attemptAutoplay(){loadingIndicator.style.display="none";const e=video.play();void 0!==e&&e.then(()=>{autoplayOverlay.classList.add("hidden"),setTimeout(()=>{video.muted=!1,updateVolumeIcon()},1e3)}).catch(e=>{autoplayOverlay.classList.remove("hidden"),console.log("Autoplay prevented:",e)})}autoplayButton.addEventListener("click",function(){video.play().then(()=>{autoplayOverlay.classList.add("hidden"),video.muted=!1,updateVolumeIcon()}).catch(e=>{console.log("Play failed:",e),showError("Unable to play stream. Please try again.")})}),document.addEventListener("mousemove",function(){mousemoveThrottle||(mousemoveThrottle=setTimeout(function(){controls.classList.remove("hidden"),controlsContainer.style.opacity="1",clearTimeout(controlsTimeout),controlsTimeout=setTimeout(function(){video.paused||(controls.classList.add("hidden"),controlsContainer.style.opacity="0",qualityMenu.classList.remove("visible"))},3e3),mousemoveThrottle=null},100))}),qualityBtn.addEventListener("click",function(e){e.stopPropagation(),qualityMenu.classList.toggle("visible")}),document.addEventListener("click",function(e){qualityMenu.contains(e.target)||e.target===qualityBtn||qualityMenu.classList.remove("visible")}),video.addEventListener("play",function(){centerPlayBtn.classList.remove("visible"),playPauseBtn.innerHTML='<i class="fas fa-pause"></i>'}),video.addEventListener("pause",function(){centerPlayBtn.classList.add("visible"),playPauseBtn.innerHTML='<i class="fas fa-play"></i>'}),playPauseBtn.addEventListener("click",togglePlay),centerPlayBtn.addEventListener("click",togglePlay),video.addEventListener("click",handleVideoClick);function handleVideoClick(){const e=(new Date).getTime(),t=e-lastTap;t<300&&t>0?(clearTimeout(tapTimeout),video.paused||video.pause(),lastTap=0):(lastTap=e,tapTimeout=setTimeout(()=>{lastTap=0},300),controls.classList.remove("hidden"),controlsContainer.style.opacity="1",clearTimeout(controlsTimeout),controlsTimeout=setTimeout(function(){video.paused||(controls.classList.add("hidden"),controlsContainer.style.opacity="0")},3e3))}function togglePlay(){video.paused||video.ended?video.play():video.pause()}let lastProgressUpdate=0;video.addEventListener("timeupdate",function(){const e=Date.now();e-lastProgressUpdate>250&&(updateProgress(),lastProgressUpdate=e)}),progressContainer.addEventListener("click",function(e){const t=this.getBoundingClientRect(),l=(e.clientX-t.left)/this.offsetWidth;video.currentTime=l*video.duration});function updateProgress(){const e=video.currentTime/video.duration*100;progress.style.width=e+"%";if(video.buffered.length>0){const t=video.buffered.end(0)/video.duration*100;progressBuffer.style.width=t+"%"}currentTimeEl.textContent=formatTime(video.currentTime)}function formatTime(e){if(isNaN(e))return"0:00";const t=Math.floor(e/60),l=Math.floor(e%60);return t+":"+(l<10?"0":"")+l}volumeBtn.addEventListener("click",toggleMute);function toggleMute(){video.muted=!video.muted,updateVolumeIcon()}volumeSlider.addEventListener("input",function(){video.volume=volumeSlider.value,video.muted=0===video.volume,updateVolumeIcon(),updateVolumeSlider()});function updateVolumeIcon(){0===video.muted||0===video.volume?(volumeBtn.innerHTML='<i class="fas fa-volume-mute"></i>',volumeSlider.value=0):video.volume>.5?volumeBtn.innerHTML='<i class="fas fa-volume-up"></i>':video.volume>0?volumeBtn.innerHTML='<i class="fas fa-volume-down"></i>':volumeBtn.innerHTML='<i class="fas fa-volume-off"></i>',volumeSlider.value=video.volume,updateVolumeSlider()}function updateVolumeSlider(){volumeSliderFill.style.width=(video.muted?0:100*video.volume)+"%"}fullscreenBtn.addEventListener("click",toggleFullscreen);function toggleFullscreen(){document.fullscreenElement?document.exitFullscreen():(document.documentElement.requestFullscreen().catch(e=>{console.log("Fullscreen error:",e)}),fullscreenBtn.innerHTML='<i class="fas fa-compress"></i>')}pipBtn.addEventListener("click",togglePip);function togglePip(){document.pictureInPictureElement?document.exitPictureInPicture().catch(e=>{console.error("Error exiting Picture-in-Picture:",e)}):document.pictureInPictureEnabled&&video.requestPictureInPicture().catch(e=>{console.error("Error entering Picture-in-Picture:",e)})}document.pictureInPictureEnabled?(pipBtn.style.display="flex",video.addEventListener("enterpictureinpicture",function(){pipBtn.innerHTML='<i class="fas fa-expand-alt"></i>'}),video.addEventListener("leavepictureinpicture",function(){pipBtn.innerHTML='<i class="fas fa-compress-alt"></i>'})):pipBtn.style.display="none",video.addEventListener("waiting",function(){loadingIndicator.style.display="flex"}),video.addEventListener("playing",function(){loadingIndicator.style.display="none"});function showError(e){errorMessage.textContent=e,errorMessage.style.display="block",loadingIndicator.style.display="none"}updateVolumeIcon(),setInterval(()=>{const e=parseInt(viewerCount.textContent),t=Math.floor(5*Math.random())-2,l=Math.max(100,e+t);viewerCount.textContent=Math.round(l/100)*100>=1e3?(Math.round(l/100)/10).toFixed(1)+"K":l},1e4),window.addEventListener("beforeunload",function(){hls&&hls.destroy()});
         });
     </script>
